@@ -235,7 +235,7 @@ export default function MyPostsSection({
       body: p.body ?? "",
       genre: p.genre ?? "その他",
       url: p.url ?? "",
-      author: authorLabel, // ✅ 修正：publicで「自分」固定にならない
+      author: authorLabel,
       authorId: uid,
 
       createdAt: msToTimestampLike(p.createdAtMs ?? 0),
@@ -365,7 +365,7 @@ export default function MyPostsSection({
           body: x.body ?? "",
           genre: x.genre ?? "その他",
           url: x.url ?? "",
-          author: x.authorName ?? "名無し", // ✅ 一旦入れる（後で上書きする）
+          author: x.authorName ?? "名無し",
           authorId: x.authorId ?? "",
           createdAt: x.createdAt ?? null,
 
@@ -707,6 +707,20 @@ export default function MyPostsSection({
     router.push(`/posts/${id}`);
   };
 
+  // ----------------------------
+  // ✅ FIX: 投稿削除（コメント/返信/コメントいいね等も先に削除してから投稿を削除）
+  // ----------------------------
+  const deleteSubcollectionDocs = async (colRef: ReturnType<typeof collection>) => {
+    const snap = await getDocs(colRef);
+    const docs = snap.docs;
+
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = writeBatch(db);
+      docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  };
+
   const handleDelete = async (postId: string | number) => {
     const u = auth.currentUser;
     if (!u) {
@@ -714,26 +728,64 @@ export default function MyPostsSection({
       return;
     }
 
+    // publicページからは削除UI自体を出してないが、念のため
     if (variant === "public") return;
 
     const id = String(postId);
-    if (!uid || u.uid !== uid) {
-      alert("自分の投稿のみ削除できます");
-      return;
-    }
 
+    // ✅ FIX: “自分の投稿なら必ず削除できる”判定を強化
+    // propsのuidだけに依存せず、postsドキュメントのauthorIdも確認
     try {
-      const cSnap = await getDocs(collection(db, "posts", id, "comments"));
-      const docs = cSnap.docs;
+      const postSnap = await getDoc(doc(db, "posts", id));
+      const postData = postSnap.exists() ? (postSnap.data() as any) : null;
 
-      for (let i = 0; i < docs.length; i += 450) {
-        const batch = writeBatch(db);
-        docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
-        await batch.commit();
+      const postAuthorId = String(postData?.authorId ?? "");
+      const isMineByDoc = postAuthorId && postAuthorId === u.uid;
+      const isMineByPage = uid && u.uid === uid;
+
+      if (!isMineByDoc && !isMineByPage) {
+        alert("自分の投稿のみ削除できます");
+        return;
       }
 
+      // ✅ FIX: コメントがあると失敗するのは「他人コメント削除権限」が原因になりやすい
+      // ルールも合わせて修正が必要（下に説明）。
+      // ここでは “投稿配下のデータをできるだけ全部消す” を徹底する。
+
+      // 1) comments を取得
+      const cSnap = await getDocs(collection(db, "posts", id, "comments"));
+
+      // 2) 各コメント配下の subcollection を削除（返信/いいね等）
+      for (const c of cSnap.docs) {
+        const commentId = c.id;
+
+        // ✅ よくある構成: replies / likes
+        //（無い場合でも getDocs は空で返るのでOK）
+        await deleteSubcollectionDocs(
+          collection(db, "posts", id, "comments", commentId, "replies")
+        );
+        await deleteSubcollectionDocs(
+          collection(db, "posts", id, "comments", commentId, "likes")
+        );
+
+        // ✅ もし将来追加したサブコレがあればここに足す
+        // await deleteSubcollectionDocs(collection(db, "posts", id, "comments", commentId, "replyLikes"));
+      }
+
+      // 3) comments 本体を削除
+      {
+        const docs = cSnap.docs;
+        for (let i = 0; i < docs.length; i += 450) {
+          const batch = writeBatch(db);
+          docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+
+      // 4) 最後に posts/{id} を削除
       await deleteDoc(doc(db, "posts", id));
 
+      // 5) 画面から消す
       setLikedPosts((prev) => prev.filter((p) => p.id !== id));
       setBookmarkedPosts((prev) => prev.filter((p) => p.id !== id));
       setMyUiPosts((prev) => prev.filter((p) => p.id !== id));
