@@ -27,7 +27,22 @@ import PostList from "./components/PostList";
 import GenreSidebar from "./components/GenreSidebar";
 import BottomNav from "./components/BottomNav";
 
-import { dummyPosts, GENRES } from "./data/dummyData";
+// ✅ ダミーデータファイルを消すので import を削除
+// import { GENRES } from "./data/dummyData";
+
+// ✅ 代わりにこのファイル内で定義（最小変更）
+const GENRES = [
+  "すべて",
+  "ファンタジー",
+  "SF",
+  "恋愛",
+  "ミステリー・サスペンス",
+  "ホラー",
+  "コメディ",
+  "青春",
+  "エッセイ・ノンフィクション",
+  "その他",
+];
 
 type UiPost = {
   id: string;
@@ -265,37 +280,10 @@ export default function HomePage() {
   }, [user, bookmarkIds]);
 
   // ----------------------------
-  // Firestore + dummy
+  // ✅ Firestoreだけ（dummy削除）
   // ----------------------------
   const allPosts: UiPost[] = useMemo(() => {
-    const normalizedDummy: UiPost[] = (dummyPosts as any[]).map((p, i) => ({
-      id: String(p.id ?? `dummy-${i}`),
-
-      // ✅ 追加：ダミーにも title / tags を持たせる（無ければ空でOK）
-      title: (p as any).title ?? null,
-      tags: Array.isArray((p as any).tags) ? (p as any).tags : [],
-
-      catchcopy: p.catchcopy ?? "",
-      body: p.body ?? "",
-      author: p.author ?? "名無し",
-      genre: p.genre ?? "その他",
-      url: p.url,
-      authorId: p.authorId ?? "",
-
-      createdAt: p.createdAt ?? null,
-
-      likeCount: typeof p.likeCount === "number" ? p.likeCount : 0,
-      liked: !!p.liked,
-      bookmarked: !!p.bookmarked,
-
-      // ✅ 追加：ダミーにも数を持たせる（無ければ0）
-      bookmarkCount:
-        typeof (p as any).bookmarkCount === "number"
-          ? (p as any).bookmarkCount
-          : 0,
-    }));
-
-    return [...remotePosts, ...normalizedDummy];
+    return [...remotePosts];
   }, [remotePosts]);
 
   // ----------------------------
@@ -379,7 +367,9 @@ export default function HomePage() {
       }
     } catch (e) {
       console.error("like update failed:", e);
-      alert("面白そう！の更新に失敗しました（権限/ルール/インデックスを確認）");
+      alert(
+        "面白そう！の更新に失敗しました（権限/ルール/インデックスを確認）"
+      );
     }
   };
 
@@ -526,7 +516,9 @@ export default function HomePage() {
 
     if (activeTab === "following") {
       // ✅ フォロー中は followingUids をサブコレから取った値で絞る
-      return user ? allPosts.filter((p) => followingUids.includes(p.authorId ?? "")) : [];
+      return user
+        ? allPosts.filter((p) => followingUids.includes(p.authorId ?? ""))
+        : [];
     }
 
     // ✅ おすすめ：likeCount順 + 日間/全体フィルター
@@ -776,7 +768,14 @@ export default function HomePage() {
               </button>
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, opacity: 0.95 }}>
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 14,
+                lineHeight: 1.8,
+                opacity: 0.95,
+              }}
+            >
               {rightPanel === "news" ? (
                 <>
                   <p style={{ marginTop: 0 }}>
@@ -814,7 +813,13 @@ export default function HomePage() {
               )}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: 14,
+              }}
+            >
               <button
                 onClick={() => setRightPanel(null)}
                 style={{
