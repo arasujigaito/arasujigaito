@@ -21,10 +21,12 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
+// ✅ ここだけ修正（./components → ../components）
 import HeaderBar from "./components/HeaderBar";
 import PostList from "./components/PostList";
 import GenreSidebar from "./components/GenreSidebar";
 import BottomNav from "./components/BottomNav";
+
 import { dummyPosts, GENRES } from "./data/dummyData";
 
 type UiPost = {
@@ -105,7 +107,8 @@ export default function HomePage() {
   const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(new Set());
 
   // ✅ 追加：おすすめ（日間 / 全体）
-  const [recommendedRange, setRecommendedRange] = useState<RecommendedRange>("day");
+  const [recommendedRange, setRecommendedRange] =
+    useState<RecommendedRange>("day");
 
   // ✅ 追加：右側「お知らせ / コンテスト詳細」表示用
   const [rightPanel, setRightPanel] = useState<null | "news" | "contest">(null);
@@ -142,7 +145,9 @@ export default function HomePage() {
 
       // ✅ A方式：followingUids は users/{uid}/following の docID から作る
       try {
-        const fSnap = await getDocs(collection(db, "users", u.uid, "following"));
+        const fSnap = await getDocs(
+          collection(db, "users", u.uid, "following")
+        );
         const ids = fSnap.docs.map((d) => d.id).filter(Boolean);
         setFollowingUids(ids);
       } catch (e) {
@@ -165,7 +170,9 @@ export default function HomePage() {
       }
 
       try {
-        const snap = await getDocs(collection(db, "users", user.uid, "bookmarks"));
+        const snap = await getDocs(
+          collection(db, "users", user.uid, "bookmarks")
+        );
         const ids = new Set<string>();
         snap.forEach((d) => ids.add(d.id));
         setBookmarkIds(ids);
@@ -207,13 +214,16 @@ export default function HomePage() {
 
         const raw: UiPost[] = snap.docs.map((d) => {
           const data = d.data() as any;
-          const likeUids: string[] = Array.isArray(data.likeUids) ? data.likeUids : [];
+          const likeUids: string[] = Array.isArray(data.likeUids)
+            ? data.likeUids
+            : [];
 
           return {
             id: d.id,
 
             // ✅ 追加：title / tags を取得して PostList に渡す
-            title: typeof data.title === "string" ? data.title : data.title ?? null,
+            title:
+              typeof data.title === "string" ? data.title : data.title ?? null,
             tags: Array.isArray(data.tags) ? data.tags : [],
 
             catchcopy: data.catchcopy ?? "",
@@ -226,12 +236,16 @@ export default function HomePage() {
             // ✅ 追加：投稿日時
             createdAt: data.createdAt ?? null,
 
-            likeCount: typeof data.likeCount === "number" ? data.likeCount : likeUids.length,
+            likeCount:
+              typeof data.likeCount === "number"
+                ? data.likeCount
+                : likeUids.length,
             liked: user ? likeUids.includes(user.uid) : false,
             bookmarked: user ? bookmarkIds.has(d.id) : false,
 
             // ✅ 追加：ブックマーク数
-            bookmarkCount: typeof data.bookmarkCount === "number" ? data.bookmarkCount : 0,
+            bookmarkCount:
+              typeof data.bookmarkCount === "number" ? data.bookmarkCount : 0,
           };
         });
 
@@ -275,7 +289,10 @@ export default function HomePage() {
       bookmarked: !!p.bookmarked,
 
       // ✅ 追加：ダミーにも数を持たせる（無ければ0）
-      bookmarkCount: typeof (p as any).bookmarkCount === "number" ? (p as any).bookmarkCount : 0,
+      bookmarkCount:
+        typeof (p as any).bookmarkCount === "number"
+          ? (p as any).bookmarkCount
+          : 0,
     }));
 
     return [...remotePosts, ...normalizedDummy];
@@ -335,7 +352,10 @@ export default function HomePage() {
         prev.map((p) => {
           if (p.id !== id) return p;
           const nextLiked = !alreadyLiked;
-          const nextCount = Math.max(0, (p.likeCount ?? 0) + (alreadyLiked ? -1 : 1));
+          const nextCount = Math.max(
+            0,
+            (p.likeCount ?? 0) + (alreadyLiked ? -1 : 1)
+          );
           return { ...p, liked: nextLiked, likeCount: nextCount };
         })
       );
@@ -343,18 +363,19 @@ export default function HomePage() {
       // ✅ 追加：面白そう通知（「いいねした時だけ」& 自分宛ては除外）
       if (!alreadyLiked && post.authorId && post.authorId !== user.uid) {
         try {
-          await addDoc(collection(db, "users", post.authorId, "notifications"), {
-            type: "like",
-            fromUid: user.uid,
-            fromName: myUsername || null,
-            postId: id,
-            commentId: null,
-            createdAt: serverTimestamp(),
-            read: false,
-          });
-        } catch {
-          // 通知がrules等で失敗しても「いいね」は成功しているので握りつぶす
-        }
+          await addDoc(
+            collection(db, "users", post.authorId, "notifications"),
+            {
+              type: "like",
+              fromUid: user.uid,
+              fromName: myUsername || null,
+              postId: id,
+              commentId: null,
+              createdAt: serverTimestamp(),
+              read: false,
+            }
+          );
+        } catch {}
       }
     } catch (e) {
       console.error("like update failed:", e);
@@ -411,7 +432,10 @@ export default function HomePage() {
         prev.map((p) => {
           if (p.id !== id) return p;
           const nextBookmarked = !alreadyBookmarked;
-          const nextCount = Math.max(0, (p.bookmarkCount ?? 0) + (alreadyBookmarked ? -1 : 1));
+          const nextCount = Math.max(
+            0,
+            (p.bookmarkCount ?? 0) + (alreadyBookmarked ? -1 : 1)
+          );
           return { ...p, bookmarked: nextBookmarked, bookmarkCount: nextCount };
         })
       );
@@ -426,18 +450,19 @@ export default function HomePage() {
       // ✅ 追加：ブックマーク通知（「ブックマークした時だけ」& 自分宛ては除外）
       if (!alreadyBookmarked && post.authorId && post.authorId !== user.uid) {
         try {
-          await addDoc(collection(db, "users", post.authorId, "notifications"), {
-            type: "bookmark",
-            fromUid: user.uid,
-            fromName: myUsername || null,
-            postId: id,
-            commentId: null,
-            createdAt: serverTimestamp(),
-            read: false,
-          });
-        } catch {
-          // 通知がrules等で失敗しても「ブックマーク」は成功しているので握りつぶす
-        }
+          await addDoc(
+            collection(db, "users", post.authorId, "notifications"),
+            {
+              type: "bookmark",
+              fromUid: user.uid,
+              fromName: myUsername || null,
+              postId: id,
+              commentId: null,
+              createdAt: serverTimestamp(),
+              read: false,
+            }
+          );
+        } catch {}
       }
     } catch (e) {
       console.error("bookmark update failed:", e);
@@ -477,10 +502,16 @@ export default function HomePage() {
           justifyContent: isMobile ? "flex-start" : "center",
         }}
       >
-        <div style={pillStyle(recommendedRange === "day")} onClick={() => setRecommendedRange("day")}>
+        <div
+          style={pillStyle(recommendedRange === "day")}
+          onClick={() => setRecommendedRange("day")}
+        >
           日間
         </div>
-        <div style={pillStyle(recommendedRange === "all")} onClick={() => setRecommendedRange("all")}>
+        <div
+          style={pillStyle(recommendedRange === "all")}
+          onClick={() => setRecommendedRange("all")}
+        >
           全体
         </div>
       </div>
@@ -499,7 +530,9 @@ export default function HomePage() {
     }
 
     // ✅ おすすめ：likeCount順 + 日間/全体フィルター
-    const sorted = [...allPosts].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0));
+    const sorted = [...allPosts].sort(
+      (a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0)
+    );
 
     if (recommendedRange === "all") return sorted;
 
@@ -526,8 +559,8 @@ export default function HomePage() {
     return tabbed.filter((p) => {
       // ✅ tags / title も検索対象に追加（最小変更）
       const tagsText = Array.isArray(p.tags) ? p.tags.join(" ") : "";
-      const hay = `${p.title ?? ""} ${p.catchcopy} ${p.body} ${p.author} ${p.genre} ${tagsText}`
-        .toLowerCase();
+      const hay =
+        `${p.title ?? ""} ${p.catchcopy} ${p.body} ${p.author} ${p.genre} ${tagsText}`.toLowerCase();
 
       return hay.includes(q);
     });
@@ -566,7 +599,6 @@ export default function HomePage() {
         selectedGenre={selectedGenre}
         onSelectGenre={setSelectedGenre}
         onClickNewPost={() => (window.location.href = "/post/new")}
-        myUsername={myUsername}
         activeTab={activeTab as any}
         onChangeTab={setActiveTab as any}
       />
@@ -641,7 +673,8 @@ export default function HomePage() {
               padding: "12px 14px",
               borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.25)",
-              background: "linear-gradient(135deg, rgba(255, 120, 0, 0.95), rgba(255, 205, 80, 0.95))",
+              background:
+                "linear-gradient(135deg, rgba(255, 120, 0, 0.95), rgba(255, 205, 80, 0.95))",
               color: "#111",
               fontWeight: 900,
               letterSpacing: 0.5,
@@ -658,7 +691,8 @@ export default function HomePage() {
               padding: "12px 14px",
               borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.25)",
-              background: "linear-gradient(135deg, rgba(110, 92, 255, 0.95), rgba(170, 120, 255, 0.95))",
+              background:
+                "linear-gradient(135deg, rgba(110, 92, 255, 0.95), rgba(170, 120, 255, 0.95))",
               color: "white",
               fontWeight: 900,
               letterSpacing: 0.5,
@@ -713,7 +747,14 @@ export default function HomePage() {
               color: "white",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
               <h2 style={{ fontSize: 18, margin: 0, fontWeight: 900 }}>
                 {rightPanel === "news" ? "お知らせ" : "コンテスト詳細"}
               </h2>
@@ -738,7 +779,9 @@ export default function HomePage() {
             <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, opacity: 0.95 }}>
               {rightPanel === "news" ? (
                 <>
-                  <p style={{ marginTop: 0 }}>あらすじ街灯をご利用いただきありがとうございます。</p>
+                  <p style={{ marginTop: 0 }}>
+                    あらすじ街灯をご利用いただきありがとうございます。
+                  </p>
 
                   <p>以下、お知らせです。</p>
 
