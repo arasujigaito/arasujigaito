@@ -51,6 +51,17 @@ export default function BottomNav({ isMobile }: Props) {
     { key: "notice", label: "通知", icon: "🔔", href: "/notifications" },
   ];
 
+  // ✅ 追加：押下時の遷移をここで一括制御（最小変更）
+  const handleNav = (key: TabKey, href: string) => {
+    // ✅ 未ログインで「投稿」を押したら、警告してログインへ
+    if (key === "post" && !user) {
+      const ok = window.confirm("投稿するにはログインが必要です。ログインしますか？");
+      if (ok) router.push("/login");
+      return;
+    }
+    router.push(href);
+  };
+
   // ✅ ここで return null（hooksの後）
   if (!isMobile) return null;
 
@@ -84,7 +95,8 @@ export default function BottomNav({ isMobile }: Props) {
             <button
               key={item.key}
               type="button"
-              onClick={() => router.push(item.href)}
+              // ✅ ここだけ変更
+              onClick={() => handleNav(item.key, item.href)}
               style={{
                 flex: 1,
                 display: "flex",
