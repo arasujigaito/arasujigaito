@@ -253,8 +253,26 @@ export default function MyPostsSection({
   const [myUiPosts, setMyUiPosts] = useState<UiPost[]>([]);
 
   // ✅ posts が変わったときだけ “基礎データ” を反映
+  // ✅ FIX: bookmarkCount が補完で入っている場合はそれを優先して保持（0戻り防止）
   useEffect(() => {
-    setMyUiPosts(myUiPostsBase);
+    setMyUiPosts((prev) => {
+      const prevMap = new Map(prev.map((p) => [p.id, p]));
+      return myUiPostsBase.map((base) => {
+        const old = prevMap.get(base.id);
+        if (!old) return base;
+
+        const keepBookmark =
+          typeof old.bookmarkCount === "number" && old.bookmarkCount > 0;
+
+        return {
+          ...base,
+          bookmarkCount: keepBookmark ? old.bookmarkCount : base.bookmarkCount,
+          // ついでに likeCount も保持（地味にズレ防止）
+          likeCount:
+            typeof old.likeCount === "number" ? old.likeCount : base.likeCount,
+        };
+      });
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, uid, variant, myName, pageUserName]);
 
@@ -708,16 +726,22 @@ export default function MyPostsSection({
   };
 
   // ----------------------------
-  // ✅ FIX: 投稿削除（コメント/返信/コメントいいね等も先に削除してから投稿を削除）
+  // ✅ FIX: 投稿削除
+  // 「サブコレ削除はベストエフォート」にして、失敗しても最後に posts を必ず削除する
   // ----------------------------
   const deleteSubcollectionDocs = async (colRef: ReturnType<typeof collection>) => {
-    const snap = await getDocs(colRef);
-    const docs = snap.docs;
+    try {
+      const snap = await getDocs(colRef);
+      const docs = snap.docs;
 
-    for (let i = 0; i < docs.length; i += 450) {
-      const batch = writeBatch(db);
-      docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
-      await batch.commit();
+      for (let i = 0; i < docs.length; i += 450) {
+        const batch = writeBatch(db);
+        docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      // ✅ ここで止めない（ルール未対応のサブコレがあっても“投稿本体削除”まで進める）
+      console.warn("subcollection delete skipped:", e);
     }
   };
 
@@ -728,13 +752,10 @@ export default function MyPostsSection({
       return;
     }
 
-    // publicページからは削除UI自体を出してないが、念のため
     if (variant === "public") return;
 
     const id = String(postId);
 
-    // ✅ FIX: “自分の投稿なら必ず削除できる”判定を強化
-    // propsのuidだけに依存せず、postsドキュメントのauthorIdも確認
     try {
       const postSnap = await getDoc(doc(db, "posts", id));
       const postData = postSnap.exists() ? (postSnap.data() as any) : null;
@@ -748,44 +769,44 @@ export default function MyPostsSection({
         return;
       }
 
-      // ✅ FIX: コメントがあると失敗するのは「他人コメント削除権限」が原因になりやすい
-      // ルールも合わせて修正が必要（下に説明）。
-      // ここでは “投稿配下のデータをできるだけ全部消す” を徹底する。
-
-      // 1) comments を取得
-      const cSnap = await getDocs(collection(db, "posts", id, "comments"));
-
-      // 2) 各コメント配下の subcollection を削除（返信/いいね等）
-      for (const c of cSnap.docs) {
-        const commentId = c.id;
-
-        // ✅ よくある構成: replies / likes
-        //（無い場合でも getDocs は空で返るのでOK）
-        await deleteSubcollectionDocs(
-          collection(db, "posts", id, "comments", commentId, "replies")
-        );
-        await deleteSubcollectionDocs(
-          collection(db, "posts", id, "comments", commentId, "likes")
-        );
-
-        // ✅ もし将来追加したサブコレがあればここに足す
-        // await deleteSubcollectionDocs(collection(db, "posts", id, "comments", commentId, "replyLikes"));
+      // ✅ 1) comments を取得（失敗してもOK）
+      let cSnap: any = null;
+      try {
+        cSnap = await getDocs(collection(db, "posts", id, "comments"));
+      } catch (e) {
+        console.warn("comments fetch skipped:", e);
       }
 
-      // 3) comments 本体を削除
-      {
-        const docs = cSnap.docs;
-        for (let i = 0; i < docs.length; i += 450) {
-          const batch = writeBatch(db);
-          docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
-          await batch.commit();
+      // ✅ 2) comment配下サブコレ（replies/likes等）を“できたら削除”
+      if (cSnap?.docs?.length) {
+        for (const c of cSnap.docs) {
+          const commentId = c.id;
+
+          await deleteSubcollectionDocs(
+            collection(db, "posts", id, "comments", commentId, "replies")
+          );
+          await deleteSubcollectionDocs(
+            collection(db, "posts", id, "comments", commentId, "likes")
+          );
+        }
+
+        // ✅ 3) comments本体も“できたら削除”（投稿主が他人コメント削除できないルールでも止めない）
+        try {
+          const docs = cSnap.docs;
+          for (let i = 0; i < docs.length; i += 450) {
+            const batch = writeBatch(db);
+            docs.slice(i, i + 450).forEach((d: any) => batch.delete(d.ref));
+            await batch.commit();
+          }
+        } catch (e) {
+          console.warn("comments delete skipped:", e);
         }
       }
 
-      // 4) 最後に posts/{id} を削除
+      // ✅ 4) 最後に posts/{id} を必ず削除（ここが本命）
       await deleteDoc(doc(db, "posts", id));
 
-      // 5) 画面から消す
+      // ✅ 5) 画面から消す
       setLikedPosts((prev) => prev.filter((p) => p.id !== id));
       setBookmarkedPosts((prev) => prev.filter((p) => p.id !== id));
       setMyUiPosts((prev) => prev.filter((p) => p.id !== id));
