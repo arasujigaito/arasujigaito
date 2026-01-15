@@ -160,9 +160,7 @@ export default function HomePage() {
 
       // ✅ A方式：followingUids は users/{uid}/following の docID から作る
       try {
-        const fSnap = await getDocs(
-          collection(db, "users", u.uid, "following")
-        );
+        const fSnap = await getDocs(collection(db, "users", u.uid, "following"));
         const ids = fSnap.docs.map((d) => d.id).filter(Boolean);
         setFollowingUids(ids);
       } catch (e) {
@@ -185,9 +183,7 @@ export default function HomePage() {
       }
 
       try {
-        const snap = await getDocs(
-          collection(db, "users", user.uid, "bookmarks")
-        );
+        const snap = await getDocs(collection(db, "users", user.uid, "bookmarks"));
         const ids = new Set<string>();
         snap.forEach((d) => ids.add(d.id));
         setBookmarkIds(ids);
@@ -229,16 +225,13 @@ export default function HomePage() {
 
         const raw: UiPost[] = snap.docs.map((d) => {
           const data = d.data() as any;
-          const likeUids: string[] = Array.isArray(data.likeUids)
-            ? data.likeUids
-            : [];
+          const likeUids: string[] = Array.isArray(data.likeUids) ? data.likeUids : [];
 
           return {
             id: d.id,
 
             // ✅ 追加：title / tags を取得して PostList に渡す
-            title:
-              typeof data.title === "string" ? data.title : data.title ?? null,
+            title: typeof data.title === "string" ? data.title : data.title ?? null,
             tags: Array.isArray(data.tags) ? data.tags : [],
 
             catchcopy: data.catchcopy ?? "",
@@ -252,15 +245,12 @@ export default function HomePage() {
             createdAt: data.createdAt ?? null,
 
             likeCount:
-              typeof data.likeCount === "number"
-                ? data.likeCount
-                : likeUids.length,
+              typeof data.likeCount === "number" ? data.likeCount : likeUids.length,
             liked: user ? likeUids.includes(user.uid) : false,
             bookmarked: user ? bookmarkIds.has(d.id) : false,
 
             // ✅ 追加：ブックマーク数
-            bookmarkCount:
-              typeof data.bookmarkCount === "number" ? data.bookmarkCount : 0,
+            bookmarkCount: typeof data.bookmarkCount === "number" ? data.bookmarkCount : 0,
           };
         });
 
@@ -340,10 +330,7 @@ export default function HomePage() {
         prev.map((p) => {
           if (p.id !== id) return p;
           const nextLiked = !alreadyLiked;
-          const nextCount = Math.max(
-            0,
-            (p.likeCount ?? 0) + (alreadyLiked ? -1 : 1)
-          );
+          const nextCount = Math.max(0, (p.likeCount ?? 0) + (alreadyLiked ? -1 : 1));
           return { ...p, liked: nextLiked, likeCount: nextCount };
         })
       );
@@ -351,25 +338,20 @@ export default function HomePage() {
       // ✅ 追加：面白そう通知（「いいねした時だけ」& 自分宛ては除外）
       if (!alreadyLiked && post.authorId && post.authorId !== user.uid) {
         try {
-          await addDoc(
-            collection(db, "users", post.authorId, "notifications"),
-            {
-              type: "like",
-              fromUid: user.uid,
-              fromName: myUsername || null,
-              postId: id,
-              commentId: null,
-              createdAt: serverTimestamp(),
-              read: false,
-            }
-          );
+          await addDoc(collection(db, "users", post.authorId, "notifications"), {
+            type: "like",
+            fromUid: user.uid,
+            fromName: myUsername || null,
+            postId: id,
+            commentId: null,
+            createdAt: serverTimestamp(),
+            read: false,
+          });
         } catch {}
       }
     } catch (e) {
       console.error("like update failed:", e);
-      alert(
-        "面白そう！の更新に失敗しました（権限/ルール/インデックスを確認）"
-      );
+      alert("面白そう！の更新に失敗しました（権限/ルール/インデックスを確認）");
     }
   };
 
@@ -440,18 +422,15 @@ export default function HomePage() {
       // ✅ 追加：ブックマーク通知（「ブックマークした時だけ」& 自分宛ては除外）
       if (!alreadyBookmarked && post.authorId && post.authorId !== user.uid) {
         try {
-          await addDoc(
-            collection(db, "users", post.authorId, "notifications"),
-            {
-              type: "bookmark",
-              fromUid: user.uid,
-              fromName: myUsername || null,
-              postId: id,
-              commentId: null,
-              createdAt: serverTimestamp(),
-              read: false,
-            }
-          );
+          await addDoc(collection(db, "users", post.authorId, "notifications"), {
+            type: "bookmark",
+            fromUid: user.uid,
+            fromName: myUsername || null,
+            postId: id,
+            commentId: null,
+            createdAt: serverTimestamp(),
+            read: false,
+          });
         } catch {}
       }
     } catch (e) {
@@ -465,33 +444,29 @@ export default function HomePage() {
   };
 
   // ----------------------------
-  // ✅ 追加：おすすめフィルターUI（おすすめタブの時だけ表示）
+  // ✅ 追加：おすすめ/お知らせボタン共通の見た目（最小変更）
   // ----------------------------
-  const RecommendedFilter = () => {
+  const pillStyle = (active: boolean): CSSProperties => ({
+    padding: "8px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.25)",
+    background: active ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)",
+    color: "white",
+    fontSize: 13,
+    cursor: "pointer",
+    userSelect: "none",
+    whiteSpace: "nowrap",
+    textAlign: "center",
+  });
+
+  // ----------------------------
+  // ✅ 追加：おすすめ（日間/全体）中身だけ（mobileでも並べやすく）
+  // ----------------------------
+  const RecommendedPills = () => {
     if (activeTab !== "recommended") return null;
 
-    const pillStyle = (active: boolean): CSSProperties => ({
-      padding: "8px 10px",
-      borderRadius: 999,
-      border: "1px solid rgba(255,255,255,0.25)",
-      background: active ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)",
-      color: "white",
-      fontSize: 13,
-      cursor: "pointer",
-      userSelect: "none",
-      whiteSpace: "nowrap",
-      textAlign: "center",
-    });
-
     return (
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          justifyContent: isMobile ? "flex-start" : "center",
-        }}
-      >
+      <>
         <div
           style={pillStyle(recommendedRange === "day")}
           onClick={() => setRecommendedRange("day")}
@@ -504,6 +479,26 @@ export default function HomePage() {
         >
           全体
         </div>
+      </>
+    );
+  };
+
+  // ----------------------------
+  // ✅ 追加：おすすめフィルターUI（PC用配置で使う）
+  // ----------------------------
+  const RecommendedFilter = () => {
+    if (activeTab !== "recommended") return null;
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          justifyContent: isMobile ? "flex-start" : "center",
+        }}
+      >
+        <RecommendedPills />
       </div>
     );
   };
@@ -516,15 +511,11 @@ export default function HomePage() {
 
     if (activeTab === "following") {
       // ✅ フォロー中は followingUids をサブコレから取った値で絞る
-      return user
-        ? allPosts.filter((p) => followingUids.includes(p.authorId ?? ""))
-        : [];
+      return user ? allPosts.filter((p) => followingUids.includes(p.authorId ?? "")) : [];
     }
 
     // ✅ おすすめ：likeCount順 + 日間/全体フィルター
-    const sorted = [...allPosts].sort(
-      (a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0)
-    );
+    const sorted = [...allPosts].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0));
 
     if (recommendedRange === "all") return sorted;
 
@@ -612,10 +603,54 @@ export default function HomePage() {
         />
 
         <main style={{ width: "100%", maxWidth: 720 }}>
-          {/* ✅ スマホ：投稿カードのすぐ上（幅は変えない） */}
+          {/* ✅ スマホ：投稿カードのすぐ上に「日間/全体」と同サイズ感で「お知らせ/コンテスト詳細」を右に表示（新着/フォローでも表示） */}
           {isMobile && (
             <div style={{ marginBottom: 10 }}>
-              <RecommendedFilter />
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  justifyContent: "flex-start",
+                  flexWrap: "wrap",
+                }}
+              >
+                {/* 左：おすすめのときだけ 日間/全体 */}
+                <RecommendedPills />
+
+                {/* 右：常に お知らせ / コンテスト詳細（同サイズ感） */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div
+                    onClick={() => setRightPanel("news")}
+                    style={{
+                      ...pillStyle(false),
+                      background:
+                        "linear-gradient(135deg, rgba(255, 120, 0, 0.95), rgba(255, 205, 80, 0.95))",
+                      color: "#111",
+                      fontWeight: 900,
+                      border: "1px solid rgba(255,255,255,0.22)",
+                      boxShadow: "0 10px 20px rgba(0,0,0,0.40)",
+                    }}
+                  >
+                    📢 お知らせ
+                  </div>
+
+                  <div
+                    onClick={() => setRightPanel("contest")}
+                    style={{
+                      ...pillStyle(false),
+                      background:
+                        "linear-gradient(135deg, rgba(110, 92, 255, 0.95), rgba(170, 120, 255, 0.95))",
+                      color: "white",
+                      fontWeight: 900,
+                      border: "1px solid rgba(255,255,255,0.22)",
+                      boxShadow: "0 10px 20px rgba(0,0,0,0.40)",
+                    }}
+                  >
+                    🏆 コンテスト詳細
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -778,9 +813,7 @@ export default function HomePage() {
             >
               {rightPanel === "news" ? (
                 <>
-                  <p style={{ marginTop: 0 }}>
-                    あらすじ街灯をご利用いただきありがとうございます。
-                  </p>
+                  <p style={{ marginTop: 0 }}>あらすじ街灯をご利用いただきありがとうございます。</p>
 
                   <p>以下、お知らせです。</p>
 
@@ -813,13 +846,7 @@ export default function HomePage() {
               )}
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginTop: 14,
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
               <button
                 onClick={() => setRightPanel(null)}
                 style={{
